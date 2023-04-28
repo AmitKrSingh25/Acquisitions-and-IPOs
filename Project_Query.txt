@@ -1,0 +1,173 @@
+---Question 1. Distribution of acquirers who already did IPO vs who didn't
+
+select a.acquirer_name,a.acquirer_uuid,
+case when  a.acquirer_uuid=b.org_uuid then '1' else '0' end as 'IPO or not'
+from acquisitions as a
+left join IPO as b
+on a.acquirer_uuid=b.org_uuid;
+
+-----Q2.Regional Analysis
+
+---- 2.1 --acquiree per region
+select acquiree_region, count(*) as Number_of_acquiree_per_region from acquisitions
+group by acquiree_region
+order by Number_of_acquiree_per_region desc
+
+-----2.2---acquirer per region
+select acquirer_region, count(*) as Number_of_acquirer_per_region from acquisitions
+group by acquirer_region
+order by Number_of_acquirer_per_region desc
+
+
+----3.Price analysis of different acquisitions
+- ----Make bins of price(
+------Using SQL only
+------and see in which bin max acquisitions lie as well
+
+Select *, count(bins) over (partition by bins) as max from
+(
+select name,price_usd,NTILE(8) over(order by price_usd desc) as bins
+from acquisitions
+)a 
+
+-----4.Monthly analysis of number of acquisitions and IPOs 
+
+
+----4.1..Number of Ipo
+
+with cte1 as
+(
+select datename(month,i.created_at) as Month,datepart(month,i.created_at) as Month_num ,count(*) as Number_of_IPO 
+from Acquisitions as A right join ipo I on a.acquirer_uuid=i.org_uuid
+group by datename(month,i.created_at), datepart(month,i.created_at)
+) select month,Number_of_IPO from cte1
+order by Month_num
+
+-----4.2..Number of Acquisition
+
+select Month_name,Number_of_acquisition from
+(select DATEPART(Month,a.created_at) as  Month_num, Datename(MONTH,a.created_at) as Month_name
+,count(b.uuid) as Number_of_acquisition
+from IPO as a join acquisitions as b
+on a.org_uuid=b.acquirer_uuid
+group by DATEPART(Month,a.created_at),Datename(MONTH,a.created_at)
+) as V
+order by Month_num;
+
+
+----5..Analysis of social media presence of acquirers vs acquirees
+-------acquisition table
+
+select acquiree_name,acquiree_social_media,
+acquirer_name,acquirer_social_media
+from acquisitions
+
+---6.Qualification (Degree) and Institution Analysis of directors of acquirers vs acquirees
+
+create table #tempd(
+acquiree_director_name varchar(100),
+acquiree_institution_name varchar(100),
+acquiree_degree_type varchar(50)
+)
+insert into #tempd
+select b.acquiree_Director_nanme,a.institution_name, a.degree_type
+from Degree as a join acquisitions as b
+on a.person_uuid=b.acquiree_Director_Id;
+select * from #tempd;
+create table #tempr(
+acquirer_director_name varchar(100),
+acquirer_institution_name varchar(100),
+acquirer_degree_type varchar(50)
+)
+insert into #tempr
+select b.acquirer_director_name,a.institution_name, a.degree_type
+from Degree as a join acquisitions as b
+on a.person_uuid=b.acquirer_director_Id;
+select distinct(acquiree_director_name),acquiree_degree_type,
+acquirer_director_name,acquirer_degree_type,acquiree_institution_name as Institution_name
+from
+(select * from #tempd,#tempr
+where acquiree_institution_name=acquirer_institution_name
+) as V
+where acquiree_director_name !=acquirer_director_name;
+
+
+---7. Check number of such acquisitions where both directors of acquirer and acquiree are from the same institute
+
+select acquiree_Director_nanme,acquirer_director_name,institution_name,degree_type
+from Acquisitions A join Degree D on a.acquiree_Director_Id=d.person_uuid
+group by acquiree_Director_nanme,degree_type,acquirer_director_name,institution_name
+union all
+select acquiree_Director_nanme,acquirer_director_name,institution_name,degree_type
+from Acquisitions A join Degree D on a.acquirer_director_Id=d.person_uuid
+group by acquiree_Director_nanme,acquirer_director_name,institution_name,degree_type
+order by institution_name
+
+------------------------------------------------------------------------------------------------------------------------------------
+
+----8--amount raised per currency  
+alter table fund
+alter column raised_amount float;
+
+select top 5 raised_amount_currency_code,sum(raised_amount) as Amount_raised from Fund
+group  by raised_amount_currency_code
+order by Amount_raised desc
+
+
+------9...Funding per region from funding round table
+select region as Region,isnull(Total_amount,0) as 'Total_amount_in_usd' from
+(
+select region,sum(raised_amount_usd) As Total_amount 
+from [Funding round] f join Acquisitions a on f.region=a.acquirer_region
+group by region
+)a
+
+
+-----10---Number of invetsment done per group
+select top 28 name, investment_count from Investors
+order by investment_count desc
+
+----11.number of acquisition per type
+select ISNULL(acquisition_type,'Unknown') as 'acquisition_type',number_of_acquistion from
+(
+select acquisition_type,count(*)as number_of_acquistion
+from Acquisitions as A join IPO as I on a.acquirer_uuid=i.org_uuid
+group by acquisition_type
+) A
+
+-----12....participant_type for an event from event,event appearance table
+select participant_type,count(*) as Number_of_person from [Event Appear]
+group by participant_type
+
+
+-----13....funding round table to see the investment per region
+select region as Region,sum(raised_amount_usd) as Total_amount_per_region from [Funding round]
+where region is not null 
+group by region
+having sum(raised_amount_usd) is not null
+
+---14... total amount raised per investment_type
+select top 10 investment_type as Investment_Type,sum(raised_amount_usd) as Total_amount_raised from [Funding round]
+group by investment_type
+order by Total_amount_raised desc
+
+----15... Number of ipo per stock_exchange_symbol
+
+select top 6 stock_exchange_symbol, sum(money_raised_usd) as Total_money_raised_in_usd  from IPO 
+group by stock_exchange_symbol
+order by Total_money_raised_in_usd desc
+
+
+------16... AMOUNT BY ENTITY_NAME
+select top 45 entity_name, sum(raised_amount_usd) as Total_amount from Fund
+group by entity_name
+order by Total_amount desc
+
+----17.. Number of person for degree
+select degree_type, count(*) as Number_of_person from Degree
+group by degree_type
+
+---18.Number of person per subject
+select top 30 subject,count(*) as Number_of_person from Degree
+group by subject
+order by  Number_of_person 
